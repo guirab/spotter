@@ -36,6 +36,31 @@ In dev, Vite proxies `/api` to `http://localhost:8000`, so no CORS setup is need
 
 Open http://localhost:5173: the page shows **API healthy** when both apps are running.
 
+## Deployment
+
+| App | Host | URL |
+|-----|------|-----|
+| Frontend | Vercel | _TBD_ |
+| Backend | Railway | _TBD_ |
+
+### Backend on Railway
+
+- Root directory: `backend`. Config file path: `/backend/railway.json` (Railway resolves it from the repo root, not the root directory).
+- `railway.json` sets the gunicorn start command (it binds to Railway's `$PORT` by default) and the `/api/health` health check.
+- Variables:
+  - `DJANGO_SECRET_KEY`: a long random string.
+  - `DEBUG=False`
+  - `ALLOWED_HOSTS=<railway domain>,healthcheck.railway.app` (Railway's health check sends that host).
+  - `CORS_ALLOWED_ORIGINS=https://<vercel domain>`: no trailing slash.
+  - `TOMTOM_API_KEY`
+
+### Frontend on Vercel
+
+- Root directory: `frontend`. Framework preset: Vite (auto-detected).
+- Variable: `VITE_API_BASE_URL=https://<railway domain>` (no trailing slash). It is read at build time, so redeploy after changing it.
+
+The production Vercel URL should show **API healthy** with no CORS errors in the console. Preview deployments get other domains, which are not in `CORS_ALLOWED_ORIGINS`, so they show "API unreachable".
+
 ## Checks
 
 ```sh
