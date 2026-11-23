@@ -27,6 +27,9 @@ CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")
 
 TOMTOM_API_KEY = os.environ.get("TOMTOM_API_KEY", "")
 
+# Typical empty tractor-trailer; added to the cargo load to get TomTom's gross vehicleWeight (PLAN.md A1).
+TRUCK_TARE_LB = 35_000
+
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",

@@ -1,11 +1,15 @@
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
 import requests
 from django.conf import settings
 
+from .eta import METERS_PER_MILE
+
 BASE_URL = "https://api.tomtom.com"
 TIMEOUT = (5, 20)
-METERS_PER_MILE = 1609.344
+# A departure this close is sent as "now": a timestamp could be in the past when TomTom receives it.
+DEPART_NOW_MARGIN = timedelta(minutes=1)
 
 
 class UpstreamError(Exception):
@@ -43,12 +47,26 @@ def geocode(query):
     ]
 
 
-def calculate_route(origin, destination):
-    """Primary truck route as {distance_mi, duration_s, geometry: [[lon, lat], ...]}."""
+def calculate_route(origin, destination, departure_at, gross_kg):
+    """Primary truck route as {distance_mi, duration_s, geometry: [[lon, lat], ...], instructions}.
+
+    `instructions` are the guidance points as (offset_m, travel_time_s), for checkpoint ETAs.
+    """
     locations = f"{origin['lat']},{origin['lon']}:{destination['lat']},{destination['lon']}"
+    if departure_at <= datetime.now(UTC) + DEPART_NOW_MARGIN:
+        depart_at = "now"
+    else:
+        depart_at = departure_at.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     data = _get(
         f"/routing/1/calculateRoute/{locations}/json",
-        {"travelMode": "truck", "vehicleCommercial": "true", "traffic": "true"},
+        {
+            "travelMode": "truck",
+            "vehicleCommercial": "true",
+            "traffic": "true",
+            "departAt": depart_at,
+            "vehicleWeight": gross_kg,
+            "instructionsType": "coded",
+        },
     )
     route = data["routes"][0]
     summary = route["summary"]
@@ -56,4 +74,8 @@ def calculate_route(origin, destination):
         "distance_mi": round(summary["lengthInMeters"] / METERS_PER_MILE, 1),
         "duration_s": summary["travelTimeInSeconds"],
         "geometry": [[p["longitude"], p["latitude"]] for leg in route["legs"] for p in leg["points"]],
+        "instructions": [
+            (i["routeOffsetInMeters"], i["travelTimeInSeconds"])
+            for i in route.get("guidance", {}).get("instructions", [])
+        ],
     }
