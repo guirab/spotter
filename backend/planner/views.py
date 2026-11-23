@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from . import tomtom
+from .plan import build_plan
 from .serializers import GeocodeQuerySerializer, PlanRequestSerializer
 
 UPSTREAM_FAILED = {"detail": "The routing service is unavailable. Please try again."}
@@ -31,9 +32,9 @@ def plan(request):
     serializer = PlanRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     try:
-        route = tomtom.calculate_route(**serializer.validated_data)
+        body = build_plan(**serializer.validated_data)
     except tomtom.NoRouteError:
         return Response({"detail": "No truck route found between these places."}, status=422)
     except tomtom.UpstreamError:
         return Response(UPSTREAM_FAILED, status=502)
-    return Response({"routes": [{"id": "A", **route}]})
+    return Response(body)
