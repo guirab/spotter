@@ -1,4 +1,5 @@
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -30,22 +31,76 @@ def empty_cache():
     cache.clear()
 
 
+class Stub:
+    """One upstream API. Set `.reply` to a response or an exception; `.calls` records params."""
+
+    reply = None
+
+    def __init__(self):
+        self.calls = []
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append({"url": url, "params": params})
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
 @pytest.fixture
-def tomtom(monkeypatch):
-    """Stub the outbound HTTP call. Set `.reply` to a response or an exception; `.calls` records params."""
+def upstream(monkeypatch):
+    """Stub every outbound `requests.get`, routed to a Stub by URL prefix."""
+    stubs = {}
 
-    class Stub:
-        reply = None
+    def get(url, params=None, timeout=None):
+        prefix = next((p for p in stubs if url.startswith(p)), None)
+        assert prefix, f"Unstubbed request to {url}"
+        return stubs[prefix].get(url, params, timeout)
 
-        def __init__(self):
-            self.calls = []
+    monkeypatch.setattr("requests.get", get)
+    return stubs
 
-        def get(self, url, params=None, timeout=None):
-            self.calls.append({"url": url, "params": params})
-            if isinstance(self.reply, Exception):
-                raise self.reply
-            return self.reply
 
-    stub = Stub()
-    monkeypatch.setattr("planner.tomtom.requests.get", stub.get)
+@pytest.fixture
+def tomtom(upstream):
+    stub = upstream["https://api.tomtom.com"] = Stub()
+    return stub
+
+
+class OpenMeteoStub(Stub):
+    """Replays the recorded forecast for any locations, re-dated to start today at 00:00 UTC like a live one.
+
+    `.hourly` overrides series by name, with one value for every hour or a list of hourly values.
+    `.issued_days_ago` starts the forecast on an earlier day, like one cached just before midnight UTC.
+    The recorded values repeat to fill the requested `forecast_days`.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.hourly = {}
+        self.issued_days_ago = 0
+
+    def get(self, url, params=None, timeout=None):
+        if (reply := super().get(url, params, timeout)) is not None:
+            return reply
+        recorded = load_fixture("openmeteo_forecast.json")
+        midnight = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        start = midnight - timedelta(days=self.issued_days_ago)
+        hours = int(params["forecast_days"]) * 24
+        locations = []
+        for i, (lat, lon) in enumerate(zip(params["latitude"].split(","), params["longitude"].split(","))):
+            location = {**recorded[i % len(recorded)], "latitude": float(lat), "longitude": float(lon)}
+            series = {k: v for k, v in location["hourly"].items() if k != "time"}
+            location["hourly"] = {
+                "time": [(start + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M") for h in range(hours)],
+                **{k: [v[h % len(v)] for h in range(hours)] for k, v in series.items()},
+                **{k: v if isinstance(v, list) else [v] * hours for k, v in self.hourly.items()},
+            }
+            locations.append(location)
+        # Like the live API: a list for several locations, a bare object for one.
+        return fake_response(200, locations if len(locations) > 1 else locations[0])
+
+
+@pytest.fixture(autouse=True)
+def openmeteo(upstream):
+    stub = upstream["https://api.open-meteo.com"] = OpenMeteoStub()
     return stub
