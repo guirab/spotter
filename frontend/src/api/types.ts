@@ -27,12 +27,26 @@ export type Checkpoint = {
   reasons: string[]
 }
 
+export type RouteSummary = {
+  miles_by_level: Record<RiskLevel, number>
+  avg_risk: number // distance-weighted mean score, 0–4
+  max_level: RiskLevel
+  first_hazard: { mile: number; eta: string; level: RiskLevel } | null // first checkpoint at High or worse
+}
+
 export type Route = {
   id: string
+  rank: number // 1 = best
   distance_mi: number
   duration_s: number
   geometry: [lon: number, lat: number][]
   checkpoints: Checkpoint[]
+  summary: RouteSummary
 }
 
-export type Plan = { routes: Route[] }
+export type Plan = {
+  recommended_route_id: string
+  recommendation_reason: string
+  warnings: string[]
+  routes: Route[] // sorted by rank
+}
