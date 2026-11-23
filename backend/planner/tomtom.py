@@ -47,8 +47,8 @@ def geocode(query):
     ]
 
 
-def calculate_route(origin, destination, departure_at, gross_kg):
-    """Primary truck route as {distance_mi, duration_s, geometry: [[lon, lat], ...], instructions}.
+def calculate_routes(origin, destination, departure_at, gross_kg):
+    """Up to 3 truck routes, primary first, each {distance_mi, duration_s, geometry: [[lon, lat], ...], instructions}.
 
     `instructions` are the guidance points as (offset_m, travel_time_s), for checkpoint ETAs.
     """
@@ -66,16 +66,18 @@ def calculate_route(origin, destination, departure_at, gross_kg):
             "departAt": depart_at,
             "vehicleWeight": gross_kg,
             "instructionsType": "coded",
+            "maxAlternatives": 2,
         },
     )
-    route = data["routes"][0]
-    summary = route["summary"]
-    return {
-        "distance_mi": round(summary["lengthInMeters"] / METERS_PER_MILE, 1),
-        "duration_s": summary["travelTimeInSeconds"],
-        "geometry": [[p["longitude"], p["latitude"]] for leg in route["legs"] for p in leg["points"]],
-        "instructions": [
-            (i["routeOffsetInMeters"], i["travelTimeInSeconds"])
-            for i in route.get("guidance", {}).get("instructions", [])
-        ],
-    }
+    return [
+        {
+            "distance_mi": round(route["summary"]["lengthInMeters"] / METERS_PER_MILE, 1),
+            "duration_s": route["summary"]["travelTimeInSeconds"],
+            "geometry": [[p["longitude"], p["latitude"]] for leg in route["legs"] for p in leg["points"]],
+            "instructions": [
+                (i["routeOffsetInMeters"], i["travelTimeInSeconds"])
+                for i in route.get("guidance", {}).get("instructions", [])
+            ],
+        }
+        for route in data["routes"]
+    ]

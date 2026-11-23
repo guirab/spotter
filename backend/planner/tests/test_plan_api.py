@@ -45,6 +45,25 @@ def test_returns_the_truck_route_parsed_from_tomtom(client, tomtom):
     assert tomtom.calls[0]["params"]["travelMode"] == "truck"
 
 
+def test_up_to_three_routes_come_back_ranked_with_a_recommendation(client, tomtom):
+    tomtom.reply = fake_response(200, load_fixture("tomtom_routes_denver_chicago_3.json"))
+
+    body = post_plan(client, DENVER, CHICAGO).json()
+
+    assert tomtom.calls[0]["params"]["maxAlternatives"] == 2
+    routes = body["routes"]
+    assert [(r["id"], r["rank"], r["distance_mi"]) for r in routes] == [
+        ("A", 1, 1006.0),
+        ("B", 2, 1173.2),
+        ("C", 3, 1331.6),
+    ]
+    assert all(r["checkpoints"] and r["summary"]["max_level"] == "low" for r in routes)
+    # The recorded forecast is calm everywhere, so travel time decides.
+    assert body["recommended_route_id"] == "A"
+    assert body["recommendation_reason"] == "Routes A and B have the same weather risk; Route A is 2 h 39 min faster."
+    assert body["warnings"] == []
+
+
 def test_tomtom_gets_the_departure_and_gross_weight_in_kg(client, tomtom):
     tomtom.reply = fake_response(200, load_fixture("tomtom_route_denver_chicago.json"))
     departure = next_hour()

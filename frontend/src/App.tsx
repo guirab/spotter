@@ -1,13 +1,18 @@
 import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import { apiErrorMessage, apiPost } from '@/api/client'
 import type { Plan, PlanRequest } from '@/api/types'
 import { MapView } from '@/components/MapView'
 import { PlanForm } from '@/components/PlanForm'
-import { formatDuration, formatMiles } from '@/lib/format'
+import { RouteCards } from '@/components/RouteCards'
 
 export default function App() {
-  const plan = useMutation({ mutationFn: (body: PlanRequest) => apiPost<Plan>('/api/plan', body) })
-  const route = plan.data?.routes[0]
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const plan = useMutation({
+    mutationFn: (body: PlanRequest) => apiPost<Plan>('/api/plan', body),
+    onSuccess: () => setSelectedId(null), // a new plan starts on its recommended route
+  })
+  const routeId = selectedId ?? plan.data?.recommended_route_id
 
   return (
     <main className="flex h-svh flex-col md:grid md:grid-cols-[22rem_1fr]">
@@ -21,17 +26,10 @@ export default function App() {
           </p>
         )}
 
-        {route && (
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <dt className="text-muted-foreground">Distance</dt>
-            <dd>{formatMiles(route.distance_mi)}</dd>
-            <dt className="text-muted-foreground">Duration</dt>
-            <dd>{formatDuration(route.duration_s)}</dd>
-          </dl>
-        )}
+        {plan.data && routeId && <RouteCards plan={plan.data} selectedId={routeId} onSelect={setSelectedId} />}
       </aside>
       <div className="min-h-[60svh] flex-1">
-        <MapView route={route} />
+        <MapView routes={plan.data?.routes} selectedId={routeId} onSelectRoute={setSelectedId} />
       </div>
     </main>
   )

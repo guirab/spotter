@@ -13,22 +13,32 @@ setWorkerUrl(workerUrl)
 const MAP_STYLE ='https://tiles.openfreemap.org/styles/positron'
 const CONTIGUOUS_US = { longitude: -98.5, latitude: 39.5, zoom: 3.3 }
 const CHECKPOINT_LAYER = 'checkpoints'
+const ROUTE_HIT_LAYER = 'routes-hit' // invisible and wider than the lines, so they are easy to click
+const SELECTED_COLOR = '#1e3a8a'
+const OTHER_COLOR = '#9ca3af'
 
-export function MapView({ route }: { route?: Route }) {
+type Props = { routes?: Route[]; selectedId?: string; onSelectRoute: (id: string) => void }
+
+export function MapView({ routes, selectedId, onSelectRoute }: Props) {
   const mapRef = useRef<MapRef>(null)
   const [selected, setSelected] = useState<Checkpoint | null>(null)
   const [cursor, setCursor] = useState('')
-  // A checkpoint from an earlier plan closes its popup.
+  const route = routes?.find((r) => r.id === selectedId)
+  // A checkpoint from an earlier plan or another route closes its popup.
   const openCheckpoint = selected && route?.checkpoints.includes(selected) ? selected : null
 
-  const routeLine = useMemo(
+  // Built once per plan; selection only changes the layer filters, so the lines are never re-uploaded.
+  const routeLines = useMemo(
     () =>
-      route && {
-        type: 'Feature' as const,
-        properties: {},
-        geometry: { type: 'LineString' as const, coordinates: route.geometry },
+      routes && {
+        type: 'FeatureCollection' as const,
+        features: routes.map((r) => ({
+          type: 'Feature' as const,
+          properties: { id: r.id },
+          geometry: { type: 'LineString' as const, coordinates: r.geometry },
+        })),
       },
-    [route],
+    [routes],
   )
 
   const checkpointPoints = useMemo(
@@ -44,17 +54,26 @@ export function MapView({ route }: { route?: Route }) {
     [route],
   )
 
-  function selectCheckpoint(event: MapLayerMouseEvent) {
-    const index = event.features?.[0]?.properties.index
+  function handleClick(event: MapLayerMouseEvent) {
+    const feature = event.features?.[0] // the topmost: checkpoints are drawn above the lines
+    if (feature?.layer.id !== CHECKPOINT_LAYER) {
+      setSelected(null)
+      // Where routes share road, the lines overlap: a click there keeps the selected one.
+      const ids = event.features?.map((f) => f.properties.id) ?? []
+      if (ids.length && !ids.includes(selectedId)) onSelectRoute(ids[0])
+      return
+    }
+    const index = feature.properties.index
     setSelected(typeof index === 'number' && route ? route.checkpoints[index] : null)
   }
 
   useEffect(() => {
-    if (!route?.geometry.length) return
-    const [first] = route.geometry
-    const bounds = route.geometry.reduce((b, point) => b.extend(point), new LngLatBounds(first, first))
+    const points = routes?.flatMap((r) => r.geometry)
+    if (!points?.length) return
+    const [first] = points
+    const bounds = points.reduce((b, point) => b.extend(point), new LngLatBounds(first, first))
     mapRef.current?.fitBounds(bounds, { padding: 48, duration: 800 })
-  }, [route])
+  }, [routes])
 
   return (
     <Map
@@ -62,19 +81,28 @@ export function MapView({ route }: { route?: Route }) {
       initialViewState={CONTIGUOUS_US}
       mapStyle={MAP_STYLE}
       style={{ width: '100%', height: '100%' }}
-      interactiveLayerIds={[CHECKPOINT_LAYER]}
+      interactiveLayerIds={[ROUTE_HIT_LAYER, CHECKPOINT_LAYER]}
       cursor={cursor}
-      onClick={selectCheckpoint}
+      onClick={handleClick}
       onMouseEnter={() => setCursor('pointer')}
       onMouseLeave={() => setCursor('')}
     >
-      {routeLine && (
-        <Source id="route" type="geojson" data={routeLine}>
+      {routeLines && (
+        <Source id="routes" type="geojson" data={routeLines}>
+          <Layer id={ROUTE_HIT_LAYER} type="line" paint={{ 'line-color': '#000000', 'line-opacity': 0, 'line-width': 16 }} />
           <Layer
-            id="route-line"
+            id="routes-other"
             type="line"
+            filter={['!=', ['get', 'id'], selectedId ?? '']}
             layout={{ 'line-join': 'round', 'line-cap': 'round' }}
-            paint={{ 'line-color': '#1e3a8a', 'line-width': 5 }}
+            paint={{ 'line-color': OTHER_COLOR, 'line-width': 4 }}
+          />
+          <Layer
+            id="routes-selected"
+            type="line"
+            filter={['==', ['get', 'id'], selectedId ?? '']}
+            layout={{ 'line-join': 'round', 'line-cap': 'round' }}
+            paint={{ 'line-color': SELECTED_COLOR, 'line-width': 6 }}
           />
         </Source>
       )}
