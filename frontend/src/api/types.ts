@@ -11,12 +11,20 @@ export type PlanRequest = {
   interval_mi: Interval
 }
 
+export type RiskLevel = 'low' | 'moderate' | 'high' | 'severe' | 'no_travel'
+
+export type Weather = { wind_mph: number; gust_mph: number; rain_in_hr: number; snow_in_hr: number }
+
 export type Checkpoint = {
   mile: number
   lat: number
   lon: number
   segment_mi: number
   eta: string // UTC ISO-8601
+  weather: Weather // the forecast hour nearest the ETA
+  level: RiskLevel
+  score: number // 0 (Low) to 4 (No Travel)
+  reasons: string[]
 }
 
 export type Route = {

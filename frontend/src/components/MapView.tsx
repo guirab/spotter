@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Map, { Layer, Popup, Source, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre'
 import type { Checkpoint, Route } from '@/api/types'
 import { formatDateTime, formatMiles } from '@/lib/format'
+import { RISK_LEVELS } from '@/lib/risk'
 
 // MapLibre 6 looks for its worker next to its own module, which bundling breaks.
 setWorkerUrl(workerUrl)
@@ -36,7 +37,7 @@ export function MapView({ route }: { route?: Route }) {
         type: 'FeatureCollection' as const,
         features: route.checkpoints.map((c, index) => ({
           type: 'Feature' as const,
-          properties: { index },
+          properties: { index, color: RISK_LEVELS[c.level].color },
           geometry: { type: 'Point' as const, coordinates: [c.lon, c.lat] },
         })),
       },
@@ -83,9 +84,9 @@ export function MapView({ route }: { route?: Route }) {
             id={CHECKPOINT_LAYER}
             type="circle"
             paint={{
-              'circle-radius': 5,
-              'circle-color': '#ffffff',
-              'circle-stroke-color': '#1e3a8a',
+              'circle-radius': 6,
+              'circle-color': ['get', 'color'],
+              'circle-stroke-color': '#ffffff',
               'circle-stroke-width': 2,
             }}
           />
@@ -105,7 +106,31 @@ export function MapView({ route }: { route?: Route }) {
             <dd>{formatMiles(openCheckpoint.mile)}</dd>
             <dt className="text-muted-foreground">ETA</dt>
             <dd>{formatDateTime(openCheckpoint.eta)}</dd>
+            <dt className="text-muted-foreground">Risk</dt>
+            <dd className="flex items-center gap-1.5 font-medium">
+              <span
+                aria-hidden
+                className="size-2.5 rounded-full"
+                style={{ backgroundColor: RISK_LEVELS[openCheckpoint.level].color }}
+              />
+              {RISK_LEVELS[openCheckpoint.level].label}
+            </dd>
+            <dt className="text-muted-foreground">Wind</dt>
+            <dd>
+              {openCheckpoint.weather.wind_mph} mph, gusts {openCheckpoint.weather.gust_mph} mph
+            </dd>
+            <dt className="text-muted-foreground">Rain</dt>
+            <dd>{openCheckpoint.weather.rain_in_hr} in/h</dd>
+            <dt className="text-muted-foreground">Snow</dt>
+            <dd>{openCheckpoint.weather.snow_in_hr} in/h</dd>
           </dl>
+          {openCheckpoint.reasons.length > 0 && (
+            <ul className="mt-2 list-disc pl-4 text-xs text-muted-foreground">
+              {openCheckpoint.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          )}
         </Popup>
       )}
     </Map>
