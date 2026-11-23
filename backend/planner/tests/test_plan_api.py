@@ -12,7 +12,8 @@ PARIS = {"label": "Paris, France", "lat": 48.8566, "lon": 2.3522}
 
 
 def next_hour():
-    return (datetime.now(timezone.utc) + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    """A whole hour at least an hour away, clear of the 1-minute "send now" margin."""
+    return (datetime.now(timezone.utc) + timedelta(hours=2)).replace(minute=0, second=0, microsecond=0)
 
 
 def post_plan(client, origin, destination, **fields):
