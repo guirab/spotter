@@ -29,7 +29,7 @@ export default function App() {
         {plan.data && routeId && <RouteCards plan={plan.data} selectedId={routeId} onSelect={setSelectedId} />}
       </aside>
       <div className="min-h-[60svh] flex-1">
-        <MapView routes={plan.data?.routes} selectedId={routeId} onSelectRoute={setSelectedId} />
+        <MapView planId={plan.data?.plan_id} routes={plan.data?.routes} selectedId={routeId} onSelectRoute={setSelectedId} />
       </div>
     </main>
   )

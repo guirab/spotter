@@ -45,8 +45,16 @@ export type Route = {
 }
 
 export type Plan = {
+  plan_id: string // fetches the heatmap for an hour
   recommended_route_id: string
   recommendation_reason: string
   warnings: string[]
   routes: Route[] // sorted by rank
+}
+
+export type Heatmap = {
+  start_at: string // UTC ISO-8601, the departure floored to the hour
+  spacing_deg: number // lattice spacing, which sizes the heatmap radius
+  points: [lon: number, lat: number][]
+  scores: number[][] // per point, 49 hourly risk scores (0–4) from start_at
 }
