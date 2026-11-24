@@ -61,11 +61,21 @@ CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
         "LOCATION": Path(tempfile.gettempdir()) / "spotter-cache",
-    }
+    },
+    # Apart, so cached weather filling the default cache never evicts a client's request count.
+    "throttle": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": Path(tempfile.gettempdir()) / "spotter-throttle",
+        "OPTIONS": {"MAX_ENTRIES": 10_000},  # past this, live counts are evicted at random
+    },
 }
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    # Per client IP; protects the TomTom quota on a public URL (PLAN.md §5.2).
+    "DEFAULT_THROTTLE_RATES": {"plan": "20/min", "geocode": "60/min"},
+    # Railway's edge is the one proxy in front: its X-Forwarded-For entry is the last, so clients cannot forge it.
+    "NUM_PROXIES": 1,
 }
 
 LANGUAGE_CODE = "en-us"

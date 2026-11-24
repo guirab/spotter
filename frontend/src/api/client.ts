@@ -1,3 +1,5 @@
+import type { PlanErrors } from '@/api/types'
+
 // Empty in dev: Vite proxies /api to Django. Set to the backend origin in production.
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? ''
 
@@ -41,5 +43,17 @@ function messagesIn(value: unknown): string[] {
 
 export function apiErrorMessage(error: Error): string {
   if (!(error instanceof ApiError)) return 'Could not reach the server. Check your connection and try again.'
+  if (error.status === 429) return 'Too many requests in a short time. Wait a minute, then try again.'
   return messagesIn(error.body).join(' ') || `Something went wrong (HTTP ${error.status}).`
+}
+
+/** Whether sending the same request again could work, unlike with invalid input or places with no route. */
+export function isRetryable(error: Error): boolean {
+  return !(error instanceof ApiError) || error.status === 429 || error.status >= 500
+}
+
+export function planErrors(error: Error | null): PlanErrors {
+  if (!(error instanceof ApiError) || error.status !== 400) return {}
+  if (!error.body || typeof error.body !== 'object' || 'detail' in error.body) return {}
+  return Object.fromEntries(Object.entries(error.body).map(([field, value]) => [field, messagesIn(value).join(' ')]))
 }

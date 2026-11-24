@@ -1,12 +1,13 @@
 from uuid import UUID
 
 from django.core.cache import cache
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.response import Response
 
 from . import openmeteo, tomtom
 from .plan import build_heatmap, build_plan
 from .serializers import GeocodeQuerySerializer, PlanRequestSerializer
+from .throttling import GeocodeThrottle, PlanThrottle
 
 ROUTING_FAILED = {"detail": "The routing service is unavailable. Please try again."}
 WEATHER_FAILED = {"detail": "The weather service is unavailable. Please try again."}
@@ -20,6 +21,7 @@ def health(request):
 
 
 @api_view(["GET"])
+@throttle_classes([GeocodeThrottle])
 def geocode(request):
     serializer = GeocodeQuerySerializer(data=request.query_params)
     serializer.is_valid(raise_exception=True)
@@ -32,6 +34,7 @@ def geocode(request):
 
 
 @api_view(["POST"])
+@throttle_classes([PlanThrottle])
 def plan(request):
     serializer = PlanRequestSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)

@@ -1,3 +1,5 @@
+import { apiErrorMessage, isRetryable } from '@/api/client'
+import { Alert } from '@/components/Alert'
 import { formatDateTime } from '@/lib/format'
 import { RISK_LEVELS } from '@/lib/risk'
 
@@ -6,24 +8,29 @@ const HAZARD_LEVELS = (['moderate', 'high', 'severe', 'no_travel'] as const).map
 type Props = {
   startAt?: string
   loading: boolean
-  error?: string
+  error: Error | null
+  onRetry: () => void
   hour: number
   onHourChange: (hour: number) => void
   visible: boolean
   onVisibleChange: (visible: boolean) => void
 }
 
-export function HeatmapControls({ startAt, loading, error, hour, onHourChange, visible, onVisibleChange }: Props) {
+export function HeatmapControls({ startAt, loading, error, onRetry, hour, onHourChange, visible, onVisibleChange }: Props) {
   if (loading) {
     return <p className="rounded-full bg-background/90 px-3 py-1 text-sm shadow">Loading weather corridor…</p>
   }
-  if (error || !startAt) {
+  if (error) {
     return (
-      <p role="alert" className="rounded-md bg-background/90 px-3 py-1 text-sm text-destructive shadow">
-        {error}
-      </p>
+      // The alert's tint sits on a solid background, so the map does not show through.
+      <div className="w-full max-w-md rounded-lg bg-background shadow">
+        <Alert tone="error" onRetry={isRetryable(error) ? onRetry : undefined}>
+          {apiErrorMessage(error)}
+        </Alert>
+      </div>
     )
   }
+  if (!startAt) return null
   const time = formatDateTime(new Date(Date.parse(startAt) + hour * 3_600_000).toISOString())
 
   return (

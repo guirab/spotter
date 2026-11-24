@@ -4,7 +4,7 @@ import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Map, { Layer, Popup, Source, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre'
-import { ApiError, apiErrorMessage, apiGet } from '@/api/client'
+import { apiGet } from '@/api/client'
 import type { Checkpoint, Heatmap, Route } from '@/api/types'
 import { HeatmapControls } from '@/components/HeatmapControls'
 import { formatDateTime, formatMiles } from '@/lib/format'
@@ -33,7 +33,6 @@ export function MapView({ planId, routes, selectedId, onSelectRoute }: Props) {
     queryFn: () => apiGet<Heatmap>(`/api/heatmap?plan_id=${planId}`),
     enabled: !!planId,
     staleTime: Infinity, // the plan's forecast is fixed; refetching could only hit an expired plan
-    retry: (count, error) => !(error instanceof ApiError && error.status === 404) && count < 2,
   })
   const [selected, setSelected] = useState<Checkpoint | null>(null)
   const [cursor, setCursor] = useState('')
@@ -217,11 +216,12 @@ export function MapView({ planId, routes, selectedId, onSelectRoute }: Props) {
         )}
       </Map>
       {planId && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-4 *:pointer-events-auto">
+        <div className="pointer-events-none absolute inset-x-0 bottom-14 flex justify-center px-4 *:pointer-events-auto">
           <HeatmapControls
             startAt={heatmap.data?.start_at}
             loading={heatmap.isPending}
-            error={heatmap.error ? apiErrorMessage(heatmap.error) : undefined}
+            error={heatmap.error}
+            onRetry={heatmap.refetch}
             hour={hour}
             onHourChange={setHour}
             visible={heatmapVisible}

@@ -1,8 +1,9 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { ChevronsUpDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { apiGet } from '@/api/client'
+import { apiErrorMessage, apiGet } from '@/api/client'
 import type { Place } from '@/api/types'
+import { FieldError } from '@/components/FieldError'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -23,16 +24,17 @@ type Props = {
   id: string
   label: string
   value: Place | null
+  error?: string
   onChange: (place: Place) => void
 }
 
-export function LocationCombobox({ id, label, value, onChange }: Props) {
+export function LocationCombobox({ id, label, value, error, onChange }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const term = search.trim().toLowerCase()
   const query = useDebouncedValue(term, DEBOUNCE_MS)
 
-  const { data: places = [], isFetching, isError } = useQuery({
+  const { data: places = [], isFetching, error: searchError } = useQuery({
     queryKey: ['geocode', query],
     queryFn: () => apiGet<Place[]>(`/api/geocode?q=${encodeURIComponent(query)}`),
     enabled: query.length >= MIN_CHARS,
@@ -43,7 +45,7 @@ export function LocationCombobox({ id, label, value, onChange }: Props) {
   let emptyText = 'No US places found.'
   if (term.length < MIN_CHARS) emptyText = `Type at least ${MIN_CHARS} characters.`
   else if (isFetching || query !== term) emptyText = 'Searching…'
-  else if (isError) emptyText = 'Search failed. Try again.'
+  else if (searchError) emptyText = apiErrorMessage(searchError)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -58,6 +60,8 @@ export function LocationCombobox({ id, label, value, onChange }: Props) {
             role="combobox"
             aria-expanded={open}
             aria-labelledby={`${id}-label ${id}`}
+            aria-invalid={!!error}
+            aria-describedby={error && `${id}-error`}
             className="justify-between font-normal"
           >
             <span className="truncate">{value?.label ?? 'Search a US place…'}</span>
@@ -89,6 +93,7 @@ export function LocationCombobox({ id, label, value, onChange }: Props) {
           </Command>
         </PopoverContent>
       </Popover>
+      <FieldError id={`${id}-error`} message={error} />
     </div>
   )
 }
