@@ -47,12 +47,14 @@ def geocode(query):
     ]
 
 
-def calculate_routes(origin, destination, departure_at, gross_kg):
+def calculate_routes(origin, destination, departure_at, gross_kg, via=None):
     """Up to 3 truck routes, primary first, each {distance_mi, duration_s, geometry: [[lon, lat], ...], instructions}.
 
-    `instructions` are the guidance points as (offset_m, travel_time_s), for checkpoint ETAs.
+    With a `via` point, only the route through it. `instructions` are the guidance points as
+    (offset_m, travel_time_s), for checkpoint ETAs. TomTom measures both from the start of the route,
+    so a two-leg route needs only its legs' points joined.
     """
-    locations = f"{origin['lat']},{origin['lon']}:{destination['lat']},{destination['lon']}"
+    locations = ":".join(f"{p['lat']},{p['lon']}" for p in (origin, via, destination) if p)
     if departure_at <= datetime.now(UTC) + DEPART_NOW_MARGIN:
         depart_at = "now"
     else:
@@ -66,7 +68,7 @@ def calculate_routes(origin, destination, departure_at, gross_kg):
             "departAt": depart_at,
             "vehicleWeight": gross_kg,
             "instructionsType": "coded",
-            "maxAlternatives": 2,
+            "maxAlternatives": 0 if via else 2,
         },
     )
     return [
