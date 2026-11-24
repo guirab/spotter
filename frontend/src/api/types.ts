@@ -11,6 +11,9 @@ export type PlanRequest = {
   interval_mi: Interval
 }
 
+/** The API's validation message for each rejected field. */
+export type PlanErrors = Partial<Record<keyof PlanRequest, string>>
+
 export type RiskLevel = 'low' | 'moderate' | 'high' | 'severe' | 'no_travel'
 
 export type Weather = { wind_mph: number; gust_mph: number; rain_in_hr: number; snow_in_hr: number }

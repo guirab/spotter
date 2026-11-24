@@ -5,15 +5,10 @@ import { cn } from '@/lib/utils'
 
 type Props = { plan: Plan; selectedId: string; onSelect: (id: string) => void }
 
-/** One card per route, best first, with the recommendation and plan warnings. */
+/** One card per route, best first, with the recommendation. */
 export function RouteCards({ plan, selectedId, onSelect }: Props) {
   return (
     <section className="flex flex-col gap-3" aria-label="Routes">
-      {plan.warnings.map((warning) => (
-        <p key={warning} role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm">
-          {warning}
-        </p>
-      ))}
       {plan.routes.map((route) => (
         <RouteCard
           key={route.id}

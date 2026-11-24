@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 import requests
-from django.core.cache import cache
+from django.core.cache import caches
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FAKE_KEY = "test-tomtom-key"
@@ -28,7 +28,8 @@ def tomtom_key(settings):
 
 @pytest.fixture(autouse=True)
 def empty_cache():
-    cache.clear()
+    for alias in caches:
+        caches[alias].clear()
 
 
 class Stub:

@@ -22,6 +22,13 @@ export function toDateTimeLocal(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+// Rounded in local time, so half-hour time zones still get :00.
+export function nextFullHour(): Date {
+  const date = new Date()
+  date.setMinutes(60, 0, 0)
+  return date
+}
+
 export function formatDuration(seconds: number): string {
   const minutes = Math.round(seconds / 60)
   const h = Math.floor(minutes / 60)
