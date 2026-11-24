@@ -32,7 +32,10 @@ def empty_cache():
 
 
 class Stub:
-    """One upstream API. Set `.reply` to a response or an exception; `.calls` records params."""
+    """One upstream API. Set `.reply` to a response or an exception, or a list of them for successive calls.
+
+    `.calls` records params.
+    """
 
     reply = None
 
@@ -41,9 +44,10 @@ class Stub:
 
     def get(self, url, params=None, timeout=None):
         self.calls.append({"url": url, "params": params})
-        if isinstance(self.reply, Exception):
-            raise self.reply
-        return self.reply
+        reply = self.reply.pop(0) if isinstance(self.reply, list) else self.reply
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
 
 
 @pytest.fixture

@@ -1,9 +1,10 @@
 """Pure geometry on [lon, lat] polylines, in miles."""
 
 from bisect import bisect_right
-from math import asin, ceil, cos, radians, sin, sqrt
+from math import asin, ceil, cos, floor, hypot, pi, radians, sin, sqrt
 
 EARTH_RADIUS_MI = 3958.8
+MI_PER_DEG = EARTH_RADIUS_MI * pi / 180
 SAME_SPOT_MI = 0.01
 
 
@@ -49,3 +50,42 @@ def sample_checkpoints(points, interval_mi, length_mi=None):
         lon, lat = point_at_mile(points, cum, mile)
         checkpoints.append({"mile": mile, "lat": lat, "lon": lon, "segment_mi": end - start})
     return checkpoints
+
+
+def overlap_ratio(a, b, near_mi=0.5):
+    """Share of line A's 1 mi samples within `near_mi` of line B, for the route dedupe (D20)."""
+    # Cells at least `near_mi` wide on both axes, so a near point is always in one of the 9 cells around a sample.
+    cell = near_mi / (MI_PER_DEG * cos(radians(max(abs(lat) for _, lat in (*a, *b)))))
+    grid = {}
+    # B densified to near_mi / 2, so its samples stand in for the line itself to within ~0.13 mi.
+    for p, q in zip(b, b[1:]):
+        n = max(ceil(haversine_mi(p, q) / (near_mi / 2)), 1)
+        for k in range(n + 1):
+            point = [p[0] + (q[0] - p[0]) * k / n, p[1] + (q[1] - p[1]) * k / n]
+            grid.setdefault((floor(point[0] / cell), floor(point[1] / cell)), []).append(point)
+    samples = [[c["lon"], c["lat"]] for c in sample_checkpoints(a, 1)]
+    near = sum(
+        any(
+            haversine_mi(s, q) <= near_mi
+            for i in (-1, 0, 1)
+            for j in (-1, 0, 1)
+            for q in grid.get((floor(s[0] / cell) + i, floor(s[1] / cell) + j), ())
+        )
+        for s in samples
+    )
+    return near / len(samples)
+
+
+def via_points(line, start, end, fraction):
+    """Two points either side of the line's midpoint, `fraction` of the start–end straight line away from it.
+
+    They lie perpendicular to that straight line (D20). An empty list when start and end coincide.
+    """
+    cum = cumulative_miles(line)
+    lon, lat = point_at_mile(line, cum, cum[-1] / 2)
+    k = cos(radians(lat))  # degrees of longitude to local degrees east
+    east, north = (end[0] - start[0]) * k, end[1] - start[1]
+    if not (norm := hypot(east, north)):
+        return []
+    offset = fraction * haversine_mi(start, end) / MI_PER_DEG / norm
+    return [[lon - north * offset / k, lat + east * offset], [lon + north * offset / k, lat - east * offset]]

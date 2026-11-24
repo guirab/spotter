@@ -4,6 +4,8 @@ import pytest
 import requests
 from django.utils.dateparse import parse_datetime
 
+from planner.geo import haversine_mi
+
 from .conftest import FAKE_KEY, fake_response, load_fixture
 
 DENVER = {"label": "Denver, CO", "lat": 39.7392, "lon": -104.9903}
@@ -50,6 +52,7 @@ def test_up_to_three_routes_come_back_ranked_with_a_recommendation(client, tomto
 
     body = post_plan(client, DENVER, CHICAGO).json()
 
+    assert len(tomtom.calls) == 1  # three distinct routes need no via-point fallback
     assert tomtom.calls[0]["params"]["maxAlternatives"] == 2
     routes = body["routes"]
     assert [(r["id"], r["rank"], r["distance_mi"]) for r in routes] == [
@@ -62,6 +65,90 @@ def test_up_to_three_routes_come_back_ranked_with_a_recommendation(client, tomto
     assert body["recommended_route_id"] == "A"
     assert body["recommendation_reason"] == "Routes A and B have the same weather risk; Route A is 2 h 39 min faster."
     assert body["warnings"] == []
+
+
+def via_reply(route):
+    """`route` as TomTom returns it through a via-point: alone, split into two legs that share the via-point.
+
+    Guidance stays as recorded: TomTom measures instruction offsets and times from the start of the route.
+    """
+    points = route["legs"][0]["points"]
+    half = len(points) // 2
+    return fake_response(200, {"routes": [{**route, "legs": [{"points": points[: half + 1]}, {"points": points[half:]}]}]})
+
+
+def stops(call):
+    """The [lon, lat] locations of a TomTom routing call."""
+    return [[float(v) for v in reversed(stop.split(","))] for stop in call["url"].split("/")[-2].split(":")]
+
+
+def test_a_single_route_is_topped_up_with_a_via_point_route_on_each_side(client, tomtom):
+    alternatives = load_fixture("tomtom_routes_denver_chicago_3.json")["routes"]
+    tomtom.reply = [
+        fake_response(200, load_fixture("tomtom_route_denver_chicago.json")),
+        via_reply(alternatives[1]),
+        via_reply(alternatives[2]),
+    ]
+    departure = next_hour()
+
+    body = post_plan(client, DENVER, CHICAGO, departure_at=departure.isoformat()).json()
+
+    assert sorted((r["id"], r["distance_mi"]) for r in body["routes"]) == [("A", 1005.0), ("B", 1173.2), ("C", 1331.6)]
+    assert body["warnings"] == []
+    _, left, right = tomtom.calls
+    origin, destination = [DENVER["lon"], DENVER["lat"]], [CHICAGO["lon"], CHICAGO["lat"]]
+    assert [stops(left)[::2], stops(right)[::2]] == [[origin, destination]] * 2
+    assert left["params"]["maxAlternatives"] == right["params"]["maxAlternatives"] == 0
+    # Either side of the route, 15% of the 920 mi straight line away from it.
+    left_via, right_via = stops(left)[1], stops(right)[1]
+    assert haversine_mi(left_via, right_via) == pytest.approx(2 * 0.15 * haversine_mi(origin, destination), rel=0.05)
+    assert haversine_mi(origin, left_via) == pytest.approx(haversine_mi(origin, right_via), rel=0.05)
+    for route in body["routes"]:
+        etas = [parse_datetime(c["eta"]) for c in route["checkpoints"]]
+        assert etas == sorted(etas)
+        assert abs(etas[-1] - (departure + timedelta(seconds=route["duration_s"]))) < timedelta(minutes=2)
+
+
+def test_a_via_point_route_duplicating_one_already_found_is_dropped_and_a_warning_says_so(client, tomtom):
+    single = load_fixture("tomtom_route_denver_chicago.json")
+    alternatives = load_fixture("tomtom_routes_denver_chicago_3.json")["routes"]
+    tomtom.reply = [fake_response(200, single), via_reply(single["routes"][0]), via_reply(alternatives[1])]
+
+    body = post_plan(client, DENVER, CHICAGO).json()
+
+    assert sorted((r["id"], r["distance_mi"]) for r in body["routes"]) == [("A", 1005.0), ("B", 1173.2)]
+    assert body["warnings"] == ["Only 2 distinct routes found."]
+
+
+def test_a_via_point_route_that_covers_one_already_found_plus_a_detour_is_dropped(client, tomtom):
+    single = load_fixture("tomtom_route_denver_chicago.json")
+    primary = single["routes"][0]
+    points = primary["legs"][0]["points"]
+    half = len(points) // 2
+    # ~100 mi north of the route's midpoint and back: the primary lies entirely along this one, not the reverse.
+    lat, lon = points[half]["latitude"], points[half]["longitude"]
+    detour = [{"latitude": lat + d, "longitude": lon} for d in (0.75, 1.5, 0.75)]
+    with_detour = {**primary, "legs": [{"points": points[: half + 1] + detour + points[half:]}]}
+    tomtom.reply = [fake_response(200, single), via_reply(with_detour), requests.ConnectionError("unreachable")]
+
+    body = post_plan(client, DENVER, CHICAGO).json()
+
+    assert [r["id"] for r in body["routes"]] == ["A"]
+
+
+def test_via_point_calls_that_fail_are_skipped(client, tomtom):
+    no_route = load_fixture("tomtom_route_no_route.json")
+    tomtom.reply = [
+        fake_response(200, load_fixture("tomtom_route_denver_chicago.json")),
+        fake_response(no_route["status"], no_route["body"]),
+        requests.ConnectionError("unreachable"),
+    ]
+
+    response = post_plan(client, DENVER, CHICAGO)
+
+    assert response.status_code == 200
+    assert [r["id"] for r in response.json()["routes"]] == ["A"]
+    assert response.json()["warnings"] == ["Only 1 distinct route found."]
 
 
 def test_tomtom_gets_the_departure_and_gross_weight_in_kg(client, tomtom):
